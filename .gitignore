@@ -1,0 +1,46 @@
+# Environment and secrets (never commit)
+.env
+.env.local
+.env.*.local
+backend/.env
+
+# Dependencies
+node_modules/
+
+# Build output
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.Python
+
+# Backend local data
+backend/data/
+*.db
+*.sqlite3
+
+# Model weights (large files; add via Git LFS or download separately)
+backend/models/
+
+# IDE and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs and cache
+*.log
+.cache/
+node_modules/.vite/
+
+# Optional: uncomment if you use Vite’s default
+# .vite/
