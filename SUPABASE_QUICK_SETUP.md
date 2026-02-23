@@ -93,7 +93,20 @@ Replace `YOUR-PROJECT-REF` and the anon key with your real values from Step 2A.
 
 ---
 
-## Step 6: (Optional) Turn off email confirmation for local dev
+## Step 6: Fix "Failed to fetch" — URL Configuration
+
+If login or signup shows **"Failed to fetch"**, add your app URL in Supabase:
+
+1. In Supabase: **Authentication** → **URL Configuration**.
+2. Set **Site URL** to your app origin, e.g. `http://localhost:5173` or `http://localhost:3000` (use the port Vite shows when you run `npm run dev`).
+3. Under **Redirect URLs**, add the same URL(s), e.g. `http://localhost:5173/**` and `http://localhost:3000/**`.
+4. Save. Then try login/signup again.
+
+Also ensure `.env` at the project root has `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` set (from Project Settings → API). Restart the dev server after changing `.env`.
+
+---
+
+## Step 7: (Optional) Turn off email confirmation for local dev
 
 If you want to sign up and log in without confirming email:
 
@@ -102,7 +115,7 @@ If you want to sign up and log in without confirming email:
 
 ---
 
-## Step 7: Run the app
+## Step 8: Run the app
 
 - **Backend:**  
   `cd backend`  

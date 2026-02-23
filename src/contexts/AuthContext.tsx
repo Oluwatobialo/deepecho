@@ -1,18 +1,20 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
-import { getMe, type UserResponse } from '../lib/api';
-import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
+import { getMe, login as apiLogin, register as apiRegister, setToken, clearToken, getToken, type UserResponse, type RegisterConfirmResponse } from '../lib/api';
 
 interface AuthState {
   user: UserResponse | null;
-  session: Session | null;
+  session: null;
   loading: boolean;
 }
 
+/** Result of register(): token + user, or requires_confirmation + message. */
+export type RegisterResult = { access_token: string; user: UserResponse } | RegisterConfirmResponse;
+
 interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, fullName: string) => Promise<void>;
-  logout: () => Promise<void>;
+  /** Returns token+user on full success, or requires_confirmation+message when email confirmation is required. Throws on error. */
+  register: (email: string, password: string, fullName: string) => Promise<RegisterResult>;
+  logout: () => void;
   isAuthenticated: boolean;
 }
 
@@ -20,41 +22,20 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserResponse | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadUser = useCallback(async () => {
     try {
-      // Get current session from Supabase
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      setSession(currentSession);
-
-      if (!currentSession) {
+      if (!getToken()) {
         setUser(null);
         setLoading(false);
         return;
       }
-
-      // Get user profile from backend (which syncs with Supabase Auth)
-      try {
-        const profile = await getMe();
-        setUser(profile);
-      } catch (error) {
-        console.error('Failed to load user profile:', error);
-        // If profile doesn't exist, create it via backend
-        // For now, just set user from Supabase metadata
-        const supabaseUser = currentSession.user;
-        setUser({
-          id: supabaseUser.id,
-          email: supabaseUser.email || '',
-          full_name: supabaseUser.user_metadata?.full_name || supabaseUser.email || 'User',
-          created_at: supabaseUser.created_at,
-        });
-      }
-    } catch (error) {
-      console.error('Failed to load session:', error);
+      const profile = await getMe();
+      setUser(profile);
+    } catch {
+      clearToken();
       setUser(null);
-      setSession(null);
     } finally {
       setLoading(false);
     }
@@ -62,117 +43,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     loadUser();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setSession(session);
-      if (session) {
-        try {
-          const profile = await getMe();
-          setUser(profile);
-        } catch {
-          // Fallback to Supabase user metadata
-          const supabaseUser = session.user;
-          setUser({
-            id: supabaseUser.id,
-            email: supabaseUser.email || '',
-            full_name: supabaseUser.user_metadata?.full_name || supabaseUser.email || 'User',
-            created_at: supabaseUser.created_at,
-          });
-        }
-      } else {
-        setUser(null);
-      }
-      setLoading(false);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
   }, [loadUser]);
 
-  const login = useCallback(
-    async (email: string, password: string) => {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+  const login = useCallback(async (email: string, password: string) => {
+    const data = await apiLogin(email, password);
+    setToken(data.access_token);
+    setUser(data.user);
+  }, []);
 
-      if (error) throw new Error(error.message);
-      if (!data.session) throw new Error('Login failed: No session');
+  const register = useCallback(async (email: string, password: string, fullName: string): Promise<RegisterResult> => {
+    const data = await apiRegister(email, password, fullName);
+    if ("requires_confirmation" in data && data.requires_confirmation) {
+      return data as RegisterConfirmResponse;
+    }
+    const tokenData = data as { access_token: string; user: UserResponse };
+    setToken(tokenData.access_token);
+    setUser(tokenData.user);
+    return tokenData;
+  }, []);
 
-      setSession(data.session);
-      
-      // Get user profile from backend
-      try {
-        const profile = await getMe();
-        setUser(profile);
-      } catch {
-        // Fallback to Supabase user metadata
-        const supabaseUser = data.user;
-        setUser({
-          id: supabaseUser.id,
-          email: supabaseUser.email || '',
-          full_name: supabaseUser.user_metadata?.full_name || supabaseUser.email || 'User',
-          created_at: supabaseUser.created_at,
-        });
-      }
-    },
-    []
-  );
-
-  const register = useCallback(
-    async (email: string, password: string, fullName: string) => {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-        },
-      });
-
-      if (error) throw new Error(error.message);
-      if (!data.session) {
-        // Supabase may require email confirmation
-        throw new Error('Registration successful. Please check your email to confirm your account.');
-      }
-
-      setSession(data.session);
-      
-      // Get user profile from backend (backend will create it)
-      try {
-        const profile = await getMe();
-        setUser(profile);
-      } catch {
-        // Fallback to Supabase user metadata
-        const supabaseUser = data.user;
-        setUser({
-          id: supabaseUser.id,
-          email: supabaseUser.email || '',
-          full_name: fullName,
-          created_at: supabaseUser.created_at,
-        });
-      }
-    },
-    []
-  );
-
-  const logout = useCallback(async () => {
-    await supabase.auth.signOut();
-    setSession(null);
+  const logout = useCallback(() => {
+    clearToken();
     setUser(null);
   }, []);
 
   const value: AuthContextValue = {
     user,
-    session,
+    session: null,
     loading,
     login,
     register,
     logout,
-    isAuthenticated: !!session && !!user,
+    isAuthenticated: !!user,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

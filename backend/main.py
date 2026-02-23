@@ -24,8 +24,6 @@ from pydantic import BaseModel, Field
 from config import MODEL_PATH
 from database import init_db
 import models_db  # noqa: F401 - register models with Base
-from model_local import load_model
-from analysis_service import run_analysis
 
 from routers import auth, patients
 
@@ -48,14 +46,18 @@ class AnalyzeResponse(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Create DB tables and load MentalBERT at startup."""
+    """Create DB tables and load MentalBERT at startup (optional; skipped on Python 3.14)."""
     init_db()
     logger.info("Database tables ready")
     try:
+        from model_local import load_model
         load_model()
         logger.info("MentalBERT loaded from %s", MODEL_PATH)
-    except FileNotFoundError as e:
-        logger.warning("Model not loaded: %s. /api/analyze will return 503 until model is available.", e)
+    except Exception as e:
+        logger.warning(
+            "Model not loaded: %s. /api/analyze will return 503 until model is available (use Python 3.11/3.12 for ML).",
+            e,
+        )
     yield
     # Shutdown: nothing to do
 
@@ -150,6 +152,11 @@ def favicon():
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 def analyze(req: AnalyzeRequest):
     """Preprocess text, run MentalBERT locally, return depression prediction and sentiment."""
+    try:
+        from analysis_service import run_analysis
+    except Exception as e:
+        logger.warning("Analysis service unavailable: %s", e)
+        raise HTTPException(status_code=503, detail="Analysis service not available (model not loaded or incompatible Python).")
     result = run_analysis(req.text, req.practitioner_notes)
     return AnalyzeResponse(
         prediction=result["prediction"],

@@ -9,6 +9,8 @@ BACKEND_DIR = Path(__file__).resolve().parent
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+# JWT Secret (Settings > API > JWT Secret) – used to verify tokens locally (avoids Python 3.14 supabase client bug)
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 
 # Database: Supabase PostgreSQL (fallback to SQLite for local dev if not configured)
 DATABASE_URL = os.getenv("DATABASE_URL")

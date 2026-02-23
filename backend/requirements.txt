@@ -7,10 +7,9 @@ python-multipart==0.0.17
 sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.0
 
-# Auth (Supabase Auth)
-supabase>=2.0.0
-postgrest>=0.13.0
+# Auth (Supabase Auth via direct HTTP + local JWT; supabase lib has Python 3.14 compat issues)
 email-validator>=2.0.0
+PyJWT>=2.8.0
 
 # NLP & model (run locally)
 transformers>=4.40.0

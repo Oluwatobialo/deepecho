@@ -14,26 +14,34 @@ const getApiBase = (): string => {
 };
 export const API_BASE = getApiBase();
 
-import { supabase } from './supabase';
+const AUTH_TOKEN_KEY = "deepecho_token";
 
-async function getToken(): Promise<string | null> {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token || null;
+export function getToken(): string | null {
+  return localStorage.getItem(AUTH_TOKEN_KEY);
 }
 
-async function fetchWithAuth(
+export function setToken(token: string): void {
+  localStorage.setItem(AUTH_TOKEN_KEY, token);
+}
+
+export function clearToken(): void {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+function fetchWithAuth(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const token = await getToken();
+  const token = getToken();
   const headers = new Headers(options.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const res = await fetch(url, { ...options, headers });
-  if (res.status === 401) {
-    await supabase.auth.signOut();
-    window.location.href = "/";
-  }
-  return res;
+  return fetch(url, { ...options, headers }).then((res) => {
+    if (res.status === 401) {
+      clearToken();
+      window.location.href = "/";
+    }
+    return res;
+  });
 }
 
 // --- Auth types and API ---
@@ -56,7 +64,7 @@ function isNetworkError(e: unknown): boolean {
 }
 
 export const SERVER_UNREACHABLE_MSG =
-  "Cannot reach the server. Start the backend: open a terminal, cd to the 'backend' folder, then run: py -m uvicorn main:app --host 127.0.0.1 --port 8000";
+  "Backend is not running. Start it with run-backend.bat (project root) or run in a terminal: cd backend then py -m uvicorn main:app --host 127.0.0.1 --port 8002. See START.md for details.";
 
 export async function login(email: string, password: string): Promise<TokenResponse> {
   let res: Response;
@@ -77,11 +85,17 @@ export async function login(email: string, password: string): Promise<TokenRespo
   return res.json();
 }
 
+/** Response when email confirmation is required (no token until user confirms). */
+export interface RegisterConfirmResponse {
+  requires_confirmation: true;
+  message: string;
+}
+
 export async function register(
   email: string,
   password: string,
   fullName: string
-): Promise<TokenResponse> {
+): Promise<TokenResponse | RegisterConfirmResponse> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE}/api/auth/register`, {
@@ -93,16 +107,21 @@ export async function register(
     if (isNetworkError(e)) throw new Error(SERVER_UNREACHABLE_MSG);
     throw e;
   }
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail ?? "Registration failed");
+    const detail = data.detail;
+    const message = Array.isArray(detail)
+      ? detail.map((x: { msg?: string }) => x.msg ?? JSON.stringify(x)).join(" ")
+      : typeof detail === "string"
+        ? detail
+        : detail?.message ?? "Registration failed";
+    throw new Error(message || "Registration failed");
   }
-  return res.json();
+  return data as TokenResponse | RegisterConfirmResponse;
 }
 
 export async function getMe(): Promise<UserResponse | null> {
-  const token = await getToken();
-  if (!token) return null;
+  if (!getToken()) return null;
   const res = await fetchWithAuth(`${API_BASE}/api/auth/me`);
   if (!res.ok) return null;
   return res.json();

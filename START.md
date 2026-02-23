@@ -2,6 +2,19 @@
 
 The project is configured to use **port 8002** for the API (see `.env`: `VITE_API_URL=http://localhost:8002`) so it doesn't conflict with other apps on 8000.
 
+**Backend: Python 3.11 or 3.12 only.** Python 3.14+ is not supported (MentalBERT/transformers incompatibility). Use a venv with 3.11 or 3.12 if your system default is 3.14.
+
+## Run the project (two terminals)
+
+| Step | Terminal 1 (backend) | Terminal 2 (frontend) |
+|------|----------------------|------------------------|
+| 1 | `cd backend` | `cd` to project root |
+| 2 | `py -m pip install -r requirements.txt` (once) | `npm install` (once) |
+| 3 | `py -m uvicorn main:app --host 127.0.0.1 --port 8002` | `npm run dev` or **run-frontend.bat** |
+| 4 | Leave running. Check: http://127.0.0.1:8002/health | Open the URL Vite prints (e.g. http://localhost:5173) |
+
+If `pip install -r requirements.txt` fails on Windows (e.g. C++ build errors), install **Microsoft C++ Build Tools** or try: `py -m pip install supabase==2.0.3 psycopg2-binary` plus the rest of `requirements.txt` without the supabase line.
+
 ## Run backend + frontend (quick reference)
 
 1. **Backend** (Terminal 1):  
@@ -74,3 +87,15 @@ Then run the backend again.
 - Restart the frontend so it picks up `VITE_API_URL`. Health check: **http://localhost:8002/health**
 
 **PowerShell blocks npm ("running scripts is disabled"):** Use **Command Prompt** (cmd) to run `npm run dev`, or run: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`. Or call `npm.cmd run dev` instead of `npm run dev`.
+
+**Backend fails with "typing.Union" / "Model not loaded" (Python 3.14):** The backend requires **Python 3.11 or 3.12**. If your default is 3.14, create a venv and run from it:
+
+```powershell
+cd backend
+py -3.12 -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python -m uvicorn main:app --host 127.0.0.1 --port 8002
+```
+
+Or double‑click **run-backend.bat** from the project root (it will error with instructions if Python 3.14 is used).

@@ -20,11 +20,18 @@ export default function Register() {
     e.preventDefault();
     setLoading(true);
     try {
-      await register(email, password, fullName);
-      toast.success('Account created');
-      navigate('/dashboard');
+      const result = await register(email, password, fullName);
+      if (result && 'requires_confirmation' in result && result.requires_confirmation) {
+        toast.success(result.message || 'Check your email to confirm your account, then sign in.');
+        navigate('/');
+      } else {
+        toast.success('Account created');
+        navigate('/dashboard');
+      }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Registration failed');
+      console.error('Registration error (full):', err);
+      const message = err instanceof Error ? err.message : 'Registration failed';
+      toast.error(message);
     } finally {
       setLoading(false);
     }

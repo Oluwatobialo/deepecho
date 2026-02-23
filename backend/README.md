@@ -1,5 +1,7 @@
 # DeepEcho Backend (FastAPI + MentalBERT local)
 
+**Requires Python 3.11 or 3.12.** Python 3.14+ is not supported (transformers/httpcore incompatibility). Use a venv: `py -3.12 -m venv .venv` then activate and `pip install -r requirements.txt`.
+
 The API runs MentalBERT **entirely on your machine**: the model is downloaded once to a folder and loaded from disk at startup. No data is sent to an external inference API.
 
 ## 1. Install dependencies

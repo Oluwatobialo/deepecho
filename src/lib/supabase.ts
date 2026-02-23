@@ -1,27 +1,23 @@
 /**
  * Supabase client for authentication and database.
- * Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env
+ * Requires VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env at project root.
+ * Get these from Supabase Dashboard → Project Settings → API.
  */
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const getSupabaseUrl = (): string => {
-  try {
-    const env = (import.meta as { env?: { VITE_SUPABASE_URL?: string } }).env;
-    if (env?.VITE_SUPABASE_URL) return env.VITE_SUPABASE_URL;
-  } catch {
-    // ignore
-  }
-  throw new Error('VITE_SUPABASE_URL is not set in .env');
-};
+const url = (import.meta.env.VITE_SUPABASE_URL as string)?.trim() || '';
+const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string)?.trim() || '';
 
-const getSupabaseAnonKey = (): string => {
-  try {
-    const env = (import.meta as { env?: { VITE_SUPABASE_ANON_KEY?: string } }).env;
-    if (env?.VITE_SUPABASE_ANON_KEY) return env.VITE_SUPABASE_ANON_KEY;
-  } catch {
-    // ignore
-  }
-  throw new Error('VITE_SUPABASE_ANON_KEY is not set in .env');
-};
+const isValid = url.length > 0 && !url.startsWith('https://YOUR-') && anonKey.length >= 20;
 
-export const supabase = createClient(getSupabaseUrl(), getSupabaseAnonKey());
+if (!isValid && import.meta.env.DEV) {
+  console.error(
+    'Supabase env missing or invalid. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env (from Supabase Dashboard → Settings → API). Restart the dev server after changing .env.'
+  );
+}
+
+// Always create a client so the app mounts; auth will fail with a clear error if env is invalid
+export const supabase: SupabaseClient = createClient(
+  isValid ? url : 'https://placeholder.supabase.co',
+  isValid ? anonKey : 'placeholder-key'
+);

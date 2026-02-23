@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -7,13 +7,21 @@ import { Button } from '../components/ui/button';
 import { Brain } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
+import { API_BASE } from '../lib/api';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [backendReachable, setBackendReachable] = useState<boolean | null>(null);
   const navigate = useNavigate();
   const { login } = useAuth();
+
+  useEffect(() => {
+    fetch(`${API_BASE}/health`, { method: 'GET', cache: 'no-store' })
+      .then((r) => setBackendReachable(r.ok))
+      .catch(() => setBackendReachable(false));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,7 +31,9 @@ export default function Login() {
       toast.success('Signed in');
       navigate('/dashboard');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Sign in failed');
+      console.error('Login error (full):', err);
+      const message = err instanceof Error ? err.message : 'Sign in failed';
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -46,6 +56,11 @@ export default function Login() {
           </div>
         </CardHeader>
         <CardContent>
+          {backendReachable === false && (
+            <div className="mb-4 p-3 rounded-md text-sm" style={{ backgroundColor: 'var(--gray-100)', color: 'var(--gray-700)' }}>
+              Backend is not running. Sign in will not work until you start it: run <strong>run-backend.bat</strong> from the project folder, or see <strong>START.md</strong>.
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>

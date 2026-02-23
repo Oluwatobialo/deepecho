@@ -8,7 +8,6 @@ from database import get_db
 from models_db import User, Patient, JournalEntry
 from schemas import PatientCreate, PatientResponse, JournalEntryCreate, JournalEntryResponse
 from auth_supabase import get_current_user
-from analysis_service import run_analysis
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
 
@@ -132,6 +131,13 @@ def create_entry(
     patient = db.query(Patient).filter(Patient.id == patient_id, Patient.user_id == current_user.id).first()
     if not patient:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+    try:
+        from analysis_service import run_analysis
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Analysis service not available (model not loaded or incompatible Python).",
+        )
     result = run_analysis(data.text, data.practitioner_notes)
     entry = JournalEntry(
         patient_id=patient_id,
