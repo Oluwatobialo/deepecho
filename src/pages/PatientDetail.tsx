@@ -890,7 +890,7 @@ export default function PatientDetail() {
                 onChange={(e) => setPatientNarrative(e.target.value)}
                 className="text-sm p-4 max-h-[300px] overflow-y-auto"
                 style={{ 
-                  fontFamily: 'Inter',
+                  fontFamily: 'Inter Tight',
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
                   borderColor: 'var(--gray-200)',
@@ -914,7 +914,7 @@ export default function PatientDetail() {
                 onChange={(e) => setPractitionerNotes(e.target.value)}
                 className="text-sm p-4 max-h-[300px] overflow-y-auto"
                 style={{ 
-                  fontFamily: 'Inter',
+                  fontFamily: 'Inter Tight',
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
                   borderColor: 'var(--gray-200)',

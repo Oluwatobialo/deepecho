@@ -1,11 +1,18 @@
 """
 Supabase Auth via direct HTTP + local JWT verification.
 Avoids the supabase-py client so we work on Python 3.14 (no httpx/httpcore bug).
+Supports both HS256 (legacy JWT secret) and ES256 (Supabase JWKS).
 """
 import json
+import logging
 import urllib.request
 import urllib.error
 from config import SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_JWT_SECRET
+
+logger = logging.getLogger(__name__)
+
+# Cached JWKS client for ES256 verification (Supabase now signs with ES256)
+_jwk_client = None
 
 
 def _parse_error_body(e: urllib.error.HTTPError) -> str:
@@ -88,13 +95,58 @@ def sign_in_with_password(email: str, password: str) -> dict:
     return out
 
 
+def _get_jwk_client():
+    """Get or create cached PyJWKClient for Supabase JWKS (ES256)."""
+    global _jwk_client
+    if _jwk_client is None:
+        from jwt import PyJWKClient
+        jwks_url = f"{SUPABASE_URL.rstrip('/')}/auth/v1/.well-known/jwks.json"
+        _jwk_client = PyJWKClient(jwks_url, cache_keys=True)
+        logger.info("JWKS client initialized for %s", jwks_url)
+    return _jwk_client
+
+
 def verify_jwt(token: str) -> dict:
-    """Verify Supabase JWT locally and return payload (e.g. sub=user_id). Uses SUPABASE_JWT_SECRET."""
+    """Verify Supabase JWT locally. Supports HS256 (legacy) and ES256 (JWKS)."""
     import jwt
-    payload = jwt.decode(
-        token,
-        SUPABASE_JWT_SECRET,
-        audience="authenticated",
-        algorithms=["HS256"],
-    )
-    return payload
+    header = jwt.get_unverified_header(token)
+    alg = header.get("alg", "HS256")
+
+    if alg == "ES256":
+        if not SUPABASE_URL:
+            raise ValueError("SUPABASE_URL required for ES256 JWT verification")
+        jwk_client = _get_jwk_client()
+        signing_key = jwk_client.get_signing_key_from_jwt(token)
+        try:
+            return jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["ES256"],
+                audience="authenticated",
+            )
+        except jwt.InvalidAudienceError:
+            return jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["ES256"],
+                options={"verify_aud": False},
+            )
+    elif alg == "HS256":
+        if not SUPABASE_JWT_SECRET:
+            raise ValueError("SUPABASE_JWT_SECRET required for HS256 JWT verification")
+        try:
+            return jwt.decode(
+                token,
+                SUPABASE_JWT_SECRET,
+                audience="authenticated",
+                algorithms=["HS256"],
+            )
+        except jwt.InvalidAudienceError:
+            return jwt.decode(
+                token,
+                SUPABASE_JWT_SECRET,
+                algorithms=["HS256"],
+                options={"verify_aud": False},
+            )
+    else:
+        raise jwt.InvalidAlgorithmError(f"Algorithm {alg} is not allowed")

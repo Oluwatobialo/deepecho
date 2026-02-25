@@ -1,8 +1,10 @@
 """Patients and journal entries API (auth required)."""
 import json
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, func, or_
+from sqlalchemy.exc import IntegrityError
 
 from database import get_db
 from models_db import User, Patient, JournalEntry
@@ -10,6 +12,19 @@ from schemas import PatientCreate, PatientResponse, JournalEntryCreate, JournalE
 from auth_supabase import get_current_user
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
+
+
+def _ensure_user_profile(db: Session, user_id: str, email: str, full_name: str) -> None:
+    """Ensure user has a row in user_profiles. Create if missing (user from JWT, no DB profile yet)."""
+    if db.query(User).filter(User.id == user_id).first():
+        return
+    try:
+        user = User(id=user_id, email=email or "user@unknown", full_name=full_name or "User")
+        db.add(user)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        # Race: another request created it; ignore
 
 
 def _patient_response(p: Patient, last_entry: JournalEntry | None = None, total_entries: int = 0) -> PatientResponse:
@@ -32,6 +47,7 @@ def list_patients(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _ensure_user_profile(db, current_user.id, current_user.email, current_user.full_name)
     patients = db.query(Patient).filter(Patient.user_id == current_user.id).order_by(Patient.created_at.desc()).all()
     out = []
     for p in patients:
@@ -42,16 +58,47 @@ def list_patients(
     return out
 
 
+def _normalize_dob(dob: str | None) -> str | None:
+    """Normalize date of birth for comparison (empty string -> None)."""
+    if dob is None or (isinstance(dob, str) and not dob.strip()):
+        return None
+    return dob.strip()
+
+
 @router.post("", response_model=PatientResponse)
 def create_patient(
     data: PatientCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _ensure_user_profile(db, current_user.id, current_user.email, current_user.full_name)
+
+    if not data.force:
+        name_lower = data.name.strip().lower()
+        dob_norm = _normalize_dob(data.date_of_birth)
+        q = db.query(Patient).filter(
+            Patient.user_id == current_user.id,
+            func.lower(Patient.name) == name_lower,
+        )
+        if dob_norm is None:
+            q = q.filter(or_(Patient.date_of_birth.is_(None), Patient.date_of_birth == ""))
+        else:
+            q = q.filter(Patient.date_of_birth == dob_norm)
+        matches = q.all()
+        if matches:
+            match_responses = [_patient_response(m) for m in matches]
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={
+                    "detail": "duplicate_found",
+                    "matches": [r.model_dump(mode="json") for r in match_responses],
+                },
+            )
+
     patient = Patient(
         user_id=current_user.id,
-        name=data.name,
-        date_of_birth=data.date_of_birth,
+        name=data.name.strip(),
+        date_of_birth=_normalize_dob(data.date_of_birth) or data.date_of_birth,
         initial_concern=data.initial_concern,
     )
     db.add(patient)

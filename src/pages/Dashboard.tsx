@@ -18,6 +18,7 @@ import {
   createEntry,
   analyzeText,
   toStoredResult,
+  DuplicatePatientError,
   type AnalyzeResponse,
   type PatientResponse,
 } from '../lib/api';
@@ -48,6 +49,8 @@ export default function Dashboard() {
   const [nameError, setNameError] = useState(false);
   const [patients, setPatients] = useState<PatientResponse[]>([]);
   const [patientsLoading, setPatientsLoading] = useState(true);
+  const [isAddingPatient, setIsAddingPatient] = useState(false);
+  const [duplicateModal, setDuplicateModal] = useState<{ matches: PatientResponse[] } | null>(null);
   
   const navigate = useNavigate();
 
@@ -60,12 +63,17 @@ export default function Dashboard() {
 
   const totalPatients = patients.length;
   const highRiskCount = patients.filter(p => (p.risk_score ?? 0) >= 70).length;
-  const todayEntries = 0;
+  const todayEntries = patients.filter(p => {
+    if (!p.last_entry_date) return false;
+    const today = new Date().toISOString().split('T')[0];
+    return p.last_entry_date.startsWith(today);
+  }).length;
 
   const selectedPatient = patients.find(p => String(p.id) === selectedPatientId);
 
   const openAddPatientModal = () => {
     setIsAddPatientModalOpen(true);
+    setDuplicateModal(null);
     setNewPatientName('');
     setNewPatientDob('');
     setNewPatientConcern('');
@@ -163,8 +171,10 @@ export default function Dashboard() {
       .toUpperCase();
   };
 
-  const formatDate = (dateStr: string) => {
+  const formatDate = (dateStr: string | null | undefined) => {
+    if (!dateStr) return "No entries yet";
     const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return "No entries yet";
     const day = String(date.getDate()).padStart(2, '0');
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const year = date.getFullYear();
@@ -255,28 +265,40 @@ export default function Dashboard() {
     );
   };
 
-  const handleAddPatient = async () => {
+  const submitAddPatient = async (force = false) => {
     if (!newPatientName.trim()) {
       setNameError(true);
       return;
     }
     setNameError(false);
+    setIsAddingPatient(true);
     try {
       const created = await createPatient({
         name: newPatientName.trim(),
         date_of_birth: newPatientDob || null,
         initial_concern: newPatientConcern || null,
+        force,
       });
       setPatients(prev => [created, ...prev]);
       toast.success('Patient added');
       setIsAddPatientModalOpen(false);
+      setDuplicateModal(null);
       setNewPatientName('');
       setNewPatientDob('');
       setNewPatientConcern('');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to add patient');
+      if (e instanceof DuplicatePatientError) {
+        setDuplicateModal({ matches: e.matches });
+      } else {
+        toast.error(e instanceof Error ? e.message : 'Failed to add patient');
+      }
+    } finally {
+      setIsAddingPatient(false);
     }
   };
+
+  const handleAddPatient = () => submitAddPatient(false);
+  const handleRegisterAnyway = () => submitAddPatient(true);
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--gray-25)' }}>
@@ -523,7 +545,7 @@ export default function Dashboard() {
                 onChange={(e) => setPatientNarrative(e.target.value)}
                 className="text-sm p-4 max-h-[300px] overflow-y-auto"
                 style={{ 
-                  fontFamily: 'Inter',
+                  fontFamily: 'Inter Tight',
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
                   borderColor: 'var(--gray-200)',
@@ -547,7 +569,7 @@ export default function Dashboard() {
                 onChange={(e) => setPractitionerNotes(e.target.value)}
                 className="text-sm p-4 max-h-[300px] overflow-y-auto"
                 style={{ 
-                  fontFamily: 'Inter',
+                  fontFamily: 'Inter Tight',
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
                   borderColor: 'var(--gray-200)',
@@ -591,11 +613,65 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
 
+      {/* Duplicate Patient Warning Modal */}
+      <Dialog open={!!duplicateModal} onOpenChange={(open) => !open && setDuplicateModal(null)}>
+        <DialogContent className="max-w-lg" style={{ borderRadius: '12px' }}>
+          <DialogHeader>
+            <DialogTitle style={{ color: 'var(--gray-900)' }}>
+              Duplicate Patient
+            </DialogTitle>
+            <DialogDescription>
+              <p className="text-sm mt-1" style={{ color: 'var(--gray-700)' }}>
+                A patient with this name and date of birth already exists
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          {duplicateModal && duplicateModal.matches.length > 0 && (
+            <div className="py-4 space-y-2">
+              <p className="text-sm font-medium" style={{ color: 'var(--gray-900)' }}>Matching patients:</p>
+              <ul className="space-y-2 max-h-48 overflow-y-auto">
+                {duplicateModal.matches.map((m) => (
+                  <li
+                    key={m.id}
+                    className="py-2 px-3 rounded-md text-sm"
+                    style={{ backgroundColor: 'var(--gray-50)' }}
+                  >
+                    <span className="font-medium">{m.name}</span>
+                    <span style={{ color: 'var(--gray-600)' }} className="block text-xs mt-0.5">
+                      Date of birth: {m.date_of_birth || '—'} • Date registered: {m.created_at ? new Date(m.created_at).toLocaleDateString() : '—'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <DialogFooter className="gap-3 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setDuplicateModal(null)}
+              style={{ borderColor: 'var(--gray-200)' }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRegisterAnyway}
+              disabled={isAddingPatient}
+              style={{ backgroundColor: 'var(--brand-600)', color: 'white' }}
+            >
+              {isAddingPatient ? 'Registering...' : 'Register Anyway'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Add Patient Modal */}
-      <Dialog open={isAddPatientModalOpen} onOpenChange={setIsAddPatientModalOpen}>
+      <Dialog open={isAddPatientModalOpen} onOpenChange={(open) => {
+        if (!open) setDuplicateModal(null);
+        setIsAddPatientModalOpen(open);
+      }}>
         <DialogContent className="max-w-lg" style={{ borderRadius: '12px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' }}>
           <DialogHeader>
-            <DialogTitle style={{ fontFamily: 'Inter', color: 'var(--gray-900)', fontSize: '20px' }}>
+            <DialogTitle style={{ fontFamily: 'Inter Tight', color: 'var(--gray-900)', fontSize: '20px' }}>
               Register New Patient
             </DialogTitle>
             <DialogDescription>
@@ -611,7 +687,7 @@ export default function Dashboard() {
                 htmlFor="newPatientName" 
                 className="uppercase tracking-wide"
                 style={{ 
-                  fontFamily: 'Inter',
+                  fontFamily: 'Inter Tight',
                   fontSize: '12px',
                   fontWeight: 500,
                   color: 'var(--gray-900)'
@@ -629,7 +705,7 @@ export default function Dashboard() {
                 }}
                 className="p-3"
                 style={{ 
-                  fontFamily: 'Inter',
+                  fontFamily: 'Inter Tight',
                   fontSize: '14px',
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
@@ -650,7 +726,7 @@ export default function Dashboard() {
                 htmlFor="newPatientDob" 
                 className="uppercase tracking-wide"
                 style={{ 
-                  fontFamily: 'Inter',
+                  fontFamily: 'Inter Tight',
                   fontSize: '12px',
                   fontWeight: 500,
                   color: 'var(--gray-900)'
@@ -666,7 +742,7 @@ export default function Dashboard() {
                   onChange={(e) => setNewPatientDob(e.target.value)}
                   className="p-3"
                   style={{ 
-                    fontFamily: 'Inter',
+                    fontFamily: 'Inter Tight',
                     fontSize: '14px',
                     borderColor: 'var(--gray-200)',
                     borderRadius: '8px'
@@ -695,6 +771,7 @@ export default function Dashboard() {
             </Button>
             <Button 
               onClick={handleAddPatient}
+              disabled={isAddingPatient}
               className="text-sm font-medium"
               style={{ 
                 backgroundColor: 'var(--brand-600)',
@@ -702,7 +779,7 @@ export default function Dashboard() {
                 color: 'white'
               }}
             >
-              Register Patient
+              {isAddingPatient ? 'Registering...' : 'Register Patient'}
             </Button>
           </DialogFooter>
         </DialogContent>

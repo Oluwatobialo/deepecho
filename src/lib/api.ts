@@ -1,16 +1,18 @@
 /**
  * DeepEcho backend API client (FastAPI + MentalBERT local).
- * Set VITE_API_URL or leave default to http://localhost:8000.
+ * Set VITE_API_URL in .env or leave default to http://127.0.0.1:8002.
+ * In dev, set VITE_API_URL= (empty) to use Vite proxy and avoid CORS.
  */
 
 const getApiBase = (): string => {
   try {
     const env = (import.meta as { env?: { VITE_API_URL?: string } }).env;
-    if (env?.VITE_API_URL) return env.VITE_API_URL;
+    // Use VITE_API_URL if set (use "" in .env to hit same-origin and use Vite proxy)
+    if (env?.VITE_API_URL !== undefined) return env.VITE_API_URL;
   } catch {
     // ignore
   }
-  return "http://localhost:8000";
+  return "http://127.0.0.1:8002";
 };
 export const API_BASE = getApiBase();
 
@@ -147,21 +149,35 @@ export async function fetchPatients(): Promise<PatientResponse[]> {
   return res.json();
 }
 
+/** Thrown when duplicate patient is detected (409). Has matches array. */
+export class DuplicatePatientError extends Error {
+  matches: PatientResponse[];
+  constructor(message: string, matches: PatientResponse[]) {
+    super(message);
+    this.name = "DuplicatePatientError";
+    this.matches = matches;
+  }
+}
+
 export async function createPatient(body: {
   name: string;
   date_of_birth?: string | null;
   initial_concern?: string | null;
+  force?: boolean;
 }): Promise<PatientResponse> {
   const res = await fetchWithAuth(`${API_BASE}/api/patients`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 409 && data.detail === "duplicate_found" && Array.isArray(data.matches)) {
+    throw new DuplicatePatientError("A patient with this name and date of birth already exists", data.matches);
+  }
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
     throw new Error(data.detail ?? "Failed to add patient");
   }
-  return res.json();
+  return data as PatientResponse;
 }
 
 export async function fetchPatient(patientId: number): Promise<PatientResponse> {

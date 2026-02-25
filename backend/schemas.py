@@ -36,6 +36,7 @@ class PatientCreate(BaseModel):
     name: str
     date_of_birth: str | None = None
     initial_concern: str | None = None
+    force: bool = False  # If True, skip duplicate check and create anyway
 
 
 class PatientResponse(BaseModel):

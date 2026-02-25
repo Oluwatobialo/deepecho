@@ -99,7 +99,7 @@ export default function Settings() {
                         style={{
                           backgroundColor: isActive ? 'var(--brand-600)' : 'transparent',
                           color: isActive ? 'white' : 'var(--gray-700)',
-                          fontFamily: 'Inter',
+                          fontFamily: 'Inter Tight',
                           fontSize: '14px',
                           fontWeight: isActive ? 500 : 400,
                         }}
@@ -119,7 +119,7 @@ export default function Settings() {
             {activeTab === 'profile' && (
               <Card style={{ borderColor: 'var(--gray-200)' }}>
                 <CardHeader>
-                  <CardTitle style={{ fontSize: '18px', fontFamily: 'Inter' }}>
+                  <CardTitle style={{ fontSize: '18px', fontFamily: 'Inter Tight' }}>
                     Account Info
                   </CardTitle>
                   <p className="text-sm mt-1" style={{ color: 'var(--gray-700)' }}>
@@ -139,7 +139,7 @@ export default function Settings() {
                       placeholder="Enter your full name"
                       className="p-3"
                       style={{ 
-                        fontFamily: 'Inter',
+                        fontFamily: 'Inter Tight',
                         fontSize: '14px',
                         borderRadius: '8px',
                         borderColor: 'var(--gray-200)'
@@ -160,7 +160,7 @@ export default function Settings() {
                       placeholder="your.email@example.com"
                       className="p-3"
                       style={{ 
-                        fontFamily: 'Inter',
+                        fontFamily: 'Inter Tight',
                         fontSize: '14px',
                         borderRadius: '8px',
                         borderColor: 'var(--gray-200)'
@@ -180,7 +180,7 @@ export default function Settings() {
                       placeholder="e.g., Clinical Psychologist"
                       className="p-3"
                       style={{ 
-                        fontFamily: 'Inter',
+                        fontFamily: 'Inter Tight',
                         fontSize: '14px',
                         borderRadius: '8px',
                         borderColor: 'var(--gray-200)'
@@ -209,7 +209,7 @@ export default function Settings() {
             {activeTab === 'security' && (
               <Card style={{ borderColor: 'var(--gray-200)' }}>
                 <CardHeader>
-                  <CardTitle style={{ fontSize: '18px', fontFamily: 'Inter' }}>
+                  <CardTitle style={{ fontSize: '18px', fontFamily: 'Inter Tight' }}>
                     Security Hub
                   </CardTitle>
                   <p className="text-sm mt-1" style={{ color: 'var(--gray-700)' }}>
@@ -221,7 +221,7 @@ export default function Settings() {
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 pb-2 border-b" style={{ borderColor: 'var(--gray-200)' }}>
                       <Lock className="w-5 h-5" style={{ color: 'var(--brand-600)' }} />
-                      <h3 className="font-semibold" style={{ fontSize: '16px', fontFamily: 'Inter' }}>
+                      <h3 className="font-semibold" style={{ fontSize: '16px', fontFamily: 'Inter Tight' }}>
                         Change Password
                       </h3>
                     </div>
@@ -238,7 +238,7 @@ export default function Settings() {
                         placeholder="Enter current password"
                         className="p-3"
                         style={{ 
-                          fontFamily: 'Inter',
+                          fontFamily: 'Inter Tight',
                           fontSize: '14px',
                           borderRadius: '8px',
                           borderColor: 'var(--gray-200)'
@@ -258,7 +258,7 @@ export default function Settings() {
                         placeholder="Enter new password"
                         className="p-3"
                         style={{ 
-                          fontFamily: 'Inter',
+                          fontFamily: 'Inter Tight',
                           fontSize: '14px',
                           borderRadius: '8px',
                           borderColor: 'var(--gray-200)'
@@ -281,7 +281,7 @@ export default function Settings() {
                         placeholder="Re-enter new password"
                         className="p-3"
                         style={{ 
-                          fontFamily: 'Inter',
+                          fontFamily: 'Inter Tight',
                           fontSize: '14px',
                           borderRadius: '8px',
                           borderColor: 'var(--gray-200)'
@@ -307,7 +307,7 @@ export default function Settings() {
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 pb-2 border-b" style={{ borderColor: 'var(--gray-200)' }}>
                       <Shield className="w-5 h-5" style={{ color: 'var(--brand-600)' }} />
-                      <h3 className="font-semibold" style={{ fontSize: '16px', fontFamily: 'Inter' }}>
+                      <h3 className="font-semibold" style={{ fontSize: '16px', fontFamily: 'Inter Tight' }}>
                         Extra Login Security
                       </h3>
                     </div>
@@ -335,7 +335,7 @@ export default function Settings() {
             {activeTab === 'alerts' && (
               <Card style={{ borderColor: 'var(--gray-200)' }}>
                 <CardHeader>
-                  <CardTitle style={{ fontSize: '18px', fontFamily: 'Inter' }}>
+                  <CardTitle style={{ fontSize: '18px', fontFamily: 'Inter Tight' }}>
                     Alert Settings
                   </CardTitle>
                   <p className="text-sm mt-1" style={{ color: 'var(--gray-700)' }}>

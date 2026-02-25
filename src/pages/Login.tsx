@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -7,7 +7,6 @@ import { Button } from '../components/ui/button';
 import { Brain } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
-import { API_BASE } from '../lib/api';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -18,12 +17,12 @@ export default function Login() {
   const { login } = useAuth();
 
   useEffect(() => {
-    fetch(`${API_BASE}/health`, { method: 'GET', cache: 'no-store' })
+    fetch('/health', { method: 'GET', cache: 'no-store' })
       .then((r) => setBackendReachable(r.ok))
       .catch(() => setBackendReachable(false));
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
@@ -61,7 +60,7 @@ export default function Login() {
               Backend is not running. Sign in will not work until you start it: run <strong>run-backend.bat</strong> from the project folder, or see <strong>START.md</strong>.
             </div>
           )}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSignIn} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input

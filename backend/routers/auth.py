@@ -1,5 +1,7 @@
 """Auth: register, login using Supabase Auth (direct HTTP; Python 3.14 compatible)."""
 import logging
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -18,38 +20,43 @@ logger = logging.getLogger(__name__)
 REGISTER_CONFIRM_MESSAGE = "Check your email to confirm your account, then sign in."
 
 
-def _auth_response_to_token(response: dict, db: Session, email: str, full_name: str | None) -> Token:
-    """Build Token from Supabase Auth API response and ensure user profile in DB."""
+def _user_obj_from_response(response: dict) -> dict:
+    """Extract user object from Supabase auth response (user may be under 'user' or at top level)."""
+    if response.get("user") and response["user"].get("id"):
+        return response["user"]
+    if response.get("id") and response.get("email"):
+        return response
+    return {}
+
+
+def _auth_response_to_token_no_db(response: dict, email_fallback: str = "", full_name_fallback: str | None = None) -> Token:
+    """Build Token from Supabase Auth API response without database. Uses user data from auth response."""
     access_token = response.get("access_token")
-    user_obj = response.get("user") or {}
+    user_obj = _user_obj_from_response(response)
     user_id = user_obj.get("id")
     if not access_token or not user_id:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get access token",
         )
-    email = user_obj.get("email") or email
-    full_name = full_name or (user_obj.get("user_metadata") or {}).get("full_name") or email or "User"
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        user = User(id=user_id, email=email, full_name=full_name)
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+    email = user_obj.get("email") or email_fallback
+    full_name = (
+        full_name_fallback
+        or (user_obj.get("user_metadata") or {}).get("full_name")
+        or email
+        or "User"
+    )
+    user_response = UserResponse(
+        id=user_id,
+        email=email,
+        full_name=full_name,
+        created_at=datetime.now(timezone.utc),
+    )
     return Token(
         access_token=access_token,
         token_type="bearer",
-        user=UserResponse.model_validate(user),
+        user=user_response,
     )
-
-
-def _user_from_response(response: dict) -> dict:
-    """Supabase may return user under 'user' or at top level (e.g. when email confirmation is on)."""
-    if response.get("user") and response["user"].get("id"):
-        return response["user"]
-    if response.get("id") and response.get("email"):
-        return response
-    return {}
 
 
 @router.post("/register")
@@ -69,7 +76,7 @@ def register(data: UserCreate, db: Session = Depends(get_db)):
         if "not configured" in error_msg.lower() or "supabase" in error_msg.lower() and "missing" in error_msg.lower():
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error_msg)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg or "Registration failed")
-    user_obj = _user_from_response(response)
+    user_obj = _user_obj_from_response(response)
     user_id = user_obj.get("id")
     if not user_id:
         logger.warning("Supabase signup response missing user id: keys=%s", list(response.keys()))
@@ -79,6 +86,7 @@ def register(data: UserCreate, db: Session = Depends(get_db)):
         )
     email = user_obj.get("email") or data.email
     full_name = (user_obj.get("user_metadata") or {}).get("full_name") or data.full_name or email
+    # Ensure user_profiles row exists (required for patients FK). Create on first registration.
     try:
         existing = db.query(User).filter(User.id == user_id).first()
         if not existing:
@@ -112,8 +120,8 @@ def register(data: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=Token)
-def login(data: LoginRequest, db: Session = Depends(get_db)):
-    """Login via Supabase Auth (HTTP)."""
+def login(data: LoginRequest):
+    """Login via Supabase Auth (HTTP). Uses auth response directly (no database) to avoid DB connection issues."""
     try:
         response = sign_in_with_password(data.email, data.password)
     except HTTPException:
@@ -123,7 +131,7 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
         if "invalid" in error_msg or "password" in error_msg or "email" in error_msg:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    return _auth_response_to_token(response, db, data.email, None)
+    return _auth_response_to_token_no_db(response, email_fallback=data.email)
 
 
 @router.get("/me", response_model=UserResponse)
