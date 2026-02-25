@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import TopNav from '../components/TopNav';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -6,18 +6,39 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Switch } from '../components/ui/switch';
 import { Checkbox } from '../components/ui/checkbox';
-import { User, Shield, Bell, Lock, Mail, Briefcase } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { User, Shield, Bell, Lock, Mail, Briefcase, Brain } from 'lucide-react';
+import { toast } from 'sonner';
+import { useAuth } from '../contexts/AuthContext';
+import { getMetrics, type ModelMetricsResponse } from '../lib/api';
 
-type TabValue = 'profile' | 'security' | 'alerts';
+type TabValue = 'profile' | 'security' | 'alerts' | 'ai-preferences';
 
 export default function Settings() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabValue>('profile');
-  
-  // Profile settings
-  const [fullName, setFullName] = useState('Dr. Sarah Mitchell');
-  const [email, setEmail] = useState('sarah.mitchell@deecho.health');
-  const [professionalTitle, setProfessionalTitle] = useState('Clinical Psychologist');
+
+  // Profile settings — initialized from auth user
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [professionalTitle, setProfessionalTitle] = useState('');
+
+  useEffect(() => {
+    if (user) {
+      setFullName(user.full_name ?? '');
+      setEmail(user.email ?? '');
+    }
+  }, [user]);
+
+  // Fetch model metrics when AI Preferences tab is selected
+  useEffect(() => {
+    if (activeTab !== 'ai-preferences') return;
+    setMetricsError(null);
+    setMetricsLoading(true);
+    getMetrics()
+      .then(setMetrics)
+      .catch((e) => setMetricsError(e instanceof Error ? e.message : 'Failed to load metrics'))
+      .finally(() => setMetricsLoading(false));
+  }, [activeTab]);
   
   // Security settings
   const [currentPassword, setCurrentPassword] = useState('');
@@ -28,6 +49,11 @@ export default function Settings() {
   // Alert settings
   const [emailHighRisk, setEmailHighRisk] = useState(true);
   const [desktopNotifications, setDesktopNotifications] = useState(false);
+
+  // AI Preferences / Model metrics
+  const [metrics, setMetrics] = useState<ModelMetricsResponse | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
 
   const handleSaveProfile = () => {
     if (!fullName || !email || !professionalTitle) {
@@ -66,6 +92,7 @@ export default function Settings() {
     { value: 'profile' as TabValue, label: 'Profile', icon: User },
     { value: 'security' as TabValue, label: 'Security', icon: Shield },
     { value: 'alerts' as TabValue, label: 'Alerts', icon: Bell },
+    { value: 'ai-preferences' as TabValue, label: 'AI Preferences', icon: Brain },
   ];
 
   return (
@@ -328,6 +355,67 @@ export default function Settings() {
                       />
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {activeTab === 'ai-preferences' && (
+              <Card style={{ borderColor: 'var(--gray-200)' }}>
+                <CardHeader>
+                  <CardTitle style={{ fontSize: '18px', fontFamily: 'Inter Tight' }}>
+                    Model Performance
+                  </CardTitle>
+                  <p className="text-sm mt-1" style={{ color: 'var(--gray-700)' }}>
+                    MentalBERT evaluation metrics on held-out test data
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {metricsLoading && (
+                    <p className="text-sm" style={{ color: 'var(--gray-700)' }}>Loading metrics...</p>
+                  )}
+                  {metricsError && (
+                    <p className="text-sm" style={{ color: 'var(--red-700)' }}>{metricsError}</p>
+                  )}
+                  {!metricsLoading && !metricsError && metrics && (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                        {[
+                          { label: 'Accuracy', value: metrics.accuracy },
+                          { label: 'Precision', value: metrics.precision },
+                          { label: 'Recall', value: metrics.recall },
+                          { label: 'F1-Score', value: metrics.f1_score },
+                          { label: 'AUC-ROC', value: metrics.auc_roc },
+                        ].map(({ label, value }) => (
+                          <div
+                            key={label}
+                            className="p-4 rounded-lg border text-center"
+                            style={{
+                              borderColor: 'var(--brand-600)',
+                              backgroundColor: 'rgba(13, 148, 136, 0.06)',
+                            }}
+                          >
+                            <p className="text-xs font-medium mb-1" style={{ color: 'var(--gray-700)' }}>
+                              {label}
+                            </p>
+                            <p className="text-2xl font-semibold" style={{ color: 'var(--brand-600)' }}>
+                              {(value * 100).toFixed(2)}%
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="space-y-2 pt-2">
+                        <p className="text-sm" style={{ color: 'var(--gray-900)' }}>
+                          <span className="font-medium">Model:</span> MentalBERT (mental-bert-base-uncased)
+                        </p>
+                        <p className="text-sm" style={{ color: 'var(--gray-900)' }}>
+                          <span className="font-medium">Dataset:</span> {metrics.dataset}
+                        </p>
+                        <p className="text-xs mt-3" style={{ color: 'var(--gray-700)', fontStyle: 'italic' }}>
+                          These metrics reflect performance on held-out test data not used during training.
+                        </p>
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             )}

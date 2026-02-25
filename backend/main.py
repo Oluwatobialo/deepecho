@@ -25,7 +25,7 @@ from config import MODEL_PATH
 from database import init_db
 import models_db  # noqa: F401 - register models with Base
 
-from routers import auth, patients
+from routers import auth, patients, metrics
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -87,6 +87,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(patients.router)
+app.include_router(metrics.router)
 
 
 @app.get("/health")

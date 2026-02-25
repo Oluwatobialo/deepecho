@@ -16,6 +16,7 @@ import {
   fetchEntries,
   createEntry,
   analyzeText,
+  flagPatientForFollowup,
   toStoredResult,
   type AnalyzeResponse,
   type PatientResponse,
@@ -30,10 +31,15 @@ import {
   CartesianGrid,
   Tooltip,
 } from 'recharts';
-import { ArrowLeft, CheckCircle, XCircle, Plus, Calendar, Download, Flag } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Plus, Calendar, Download, Flag, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 type AnalysisStep = 'preprocessing' | 'mentalbert' | 'complete' | null;
+
+function escapeHtml(s: string): string {
+  const map: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  return s.replace(/[&<>"']/g, (ch) => map[ch] ?? ch);
+}
 
 function entryToDisplay(e: JournalEntryResponse, pid: string): { id: string; patientId: string; date: string; text: string; prediction: 'depressed' | 'not_depressed'; confidence: number; riskScore: number; sentiment: { joy: number; sadness: number; fear: number }; practitionerNotes?: string } {
   const d = e.created_at.split('T')[0];
@@ -83,6 +89,7 @@ export default function PatientDetail() {
       .then(([p, es]) => {
         setPatient(p);
         setEntries(es);
+        setFlaggedForFollowup(p.flagged_for_followup ?? false);
       })
       .catch(() => {
         setPatient(null);
@@ -133,10 +140,13 @@ export default function PatientDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen" style={{ backgroundColor: 'var(--gray-25)' }}>
+      <div className="min-h-screen flex flex-col" style={{ backgroundColor: 'var(--gray-25)' }}>
         <TopNav />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <p style={{ color: 'var(--gray-700)' }}>Loading patient...</p>
+        <div className="flex-1 flex items-center justify-center px-4 py-8">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-10 h-10 animate-spin" style={{ color: 'var(--brand-600)' }} />
+            <p className="text-sm" style={{ color: 'var(--gray-700)' }}>Loading patient...</p>
+          </div>
         </div>
       </div>
     );
@@ -248,6 +258,100 @@ export default function PatientDetail() {
     if (score >= 70) return 'var(--red-700)';
     if (score >= 40) return '#F59E0B';
     return 'var(--green-700)';
+  };
+
+  const handleDownloadPDF = () => {
+    if (!patient) return;
+    const reportDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const dob = patient.date_of_birth
+      ? new Date(patient.date_of_birth).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : '—';
+    const latestStatus = patient.latest_status === 'not_depressed' ? 'Not Depressed' : 'Depressed';
+    const entriesRows = patientEntries
+      .map(
+        (e) =>
+          `<tr>
+            <td class="cell-date">${new Date(e.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+            <td class="cell-text">${escapeHtml((e.text || '').slice(0, 500))}${(e.text || '').length > 500 ? '…' : ''}</td>
+            <td class="cell-class">${e.prediction === 'depressed' ? 'Depressed' : 'Not Depressed'}</td>
+            <td class="cell-conf">${e.confidence}%</td>
+            <td class="cell-notes">${escapeHtml((e.practitionerNotes || '—').slice(0, 300))}${(e.practitionerNotes || '').length > 300 ? '…' : ''}</td>
+          </tr>`
+      )
+      .join('');
+    const practitionerNotesSection =
+      latestEntry?.practitionerNotes?.trim() ?
+        `<section class="section">
+          <h2 class="section-title">Practitioner Notes (Latest)</h2>
+          <p class="notes-text">${escapeHtml(latestEntry.practitionerNotes)}</p>
+        </section>`
+        : '';
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Patient Report - ${escapeHtml(patient.name)}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; color: #1a1a1a; margin: 0; padding: 24px 32px; font-size: 12px; line-height: 1.4; }
+    .header { border-bottom: 2px solid #0d9488; padding-bottom: 12px; margin-bottom: 20px; }
+    .logo { font-size: 18px; font-weight: 700; color: #0d9488; letter-spacing: -0.02em; }
+    .sub { font-size: 10px; color: #64748b; margin-top: 2px; }
+    h1 { font-size: 16px; margin: 0 0 4px 0; font-weight: 600; }
+    .meta { color: #64748b; font-size: 11px; margin-bottom: 16px; }
+    .summary { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 20px; }
+    .summary-item { background: #f1f5f9; padding: 10px 14px; border-radius: 8px; }
+    .summary-item strong { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 4px; }
+    .section { margin-bottom: 20px; }
+    .section-title { font-size: 13px; font-weight: 600; margin: 0 0 10px 0; color: #0d9488; }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    th { text-align: left; padding: 8px 10px; background: #0d9488; color: #fff; font-weight: 600; }
+    td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+    .cell-date { white-space: nowrap; }
+    .cell-text, .cell-notes { max-width: 280px; word-break: break-word; }
+    .cell-class { font-weight: 500; }
+    .notes-text { white-space: pre-wrap; background: #f8fafc; padding: 10px; border-radius: 6px; margin: 0; }
+    .footer { margin-top: 28px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #64748b; }
+    @media print { body { padding: 16px 24px; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">DeepEcho</div>
+    <div class="sub">Clinical Platform — Patient Report</div>
+  </div>
+  <h1>${escapeHtml(patient.name)}</h1>
+  <p class="meta">Report date: ${reportDate} · Patient ID: #${patient.id}</p>
+  <div class="summary">
+    <div class="summary-item"><strong>Date of birth</strong>${dob}</div>
+    <div class="summary-item"><strong>Risk score</strong>${(patient.risk_score ?? latestEntry?.riskScore) != null ? (patient.risk_score ?? latestEntry?.riskScore) + '/100' : '—'}</div>
+    <div class="summary-item"><strong>Latest status</strong>${latestStatus}</div>
+    <div class="summary-item"><strong>AI certainty</strong>${(latestEntry?.confidence ?? patient.confidence) != null ? (latestEntry?.confidence ?? patient.confidence) + '%' : '—'}</div>
+  </div>
+  <section class="section">
+    <h2 class="section-title">Journal entries</h2>
+    <table>
+      <thead><tr><th>Date</th><th>Excerpt</th><th>Classification</th><th>Confidence</th><th>Practitioner notes</th></tr></thead>
+      <tbody>${entriesRows || '<tr><td colspan="5">No entries.</td></tr>'}</tbody>
+    </table>
+  </section>
+  ${practitionerNotesSection}
+  <div class="footer">Generated by DeepEcho Clinical Platform</div>
+  <script>
+    window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; };
+  </script>
+</body>
+</html>`;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('Popup blocked. Please allow popups to print the report.');
+      return;
+    }
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
   };
 
   const handleAddEntry = () => {
@@ -443,9 +547,16 @@ export default function PatientDetail() {
                   </span>
                   <Switch
                     checked={flaggedForFollowup}
-                    onCheckedChange={(checked) => {
-                      setFlaggedForFollowup(checked);
-                      toast.success(checked ? 'Patient flagged for follow-up' : 'Follow-up flag removed');
+                    onCheckedChange={async (checked) => {
+                      if (!patient) return;
+                      try {
+                        const updated = await flagPatientForFollowup(patient.id, checked);
+                        setFlaggedForFollowup(updated.flagged_for_followup);
+                        setPatient(updated);
+                        toast.success(checked ? 'Patient flagged for follow-up' : 'Follow-up flag removed');
+                      } catch {
+                        toast.error('Failed to update follow-up flag');
+                      }
                     }}
                     className={flaggedForFollowup ? '[&[data-state=checked]]:bg-[#F59E0B]' : ''}
                   />
@@ -458,10 +569,7 @@ export default function PatientDetail() {
             <div className="flex items-center gap-3">
               <Button
                 variant="outline"
-                onClick={() => {
-                  toast.success('PDF report will be downloaded');
-                  // In a real app, this would generate and download a PDF
-                }}
+                onClick={handleDownloadPDF}
                 style={{ borderColor: 'var(--gray-200)' }}
               >
                 <Download className="w-4 h-4 mr-2" />
@@ -792,7 +900,7 @@ export default function PatientDetail() {
                     Total Entries
                   </p>
                   <p className="text-sm" style={{ color: 'var(--gray-900)' }}>
-                    {patient.totalEntries} submissions
+                    {patient.total_entries} submissions
                   </p>
                 </div>
                 <div>
@@ -800,11 +908,11 @@ export default function PatientDetail() {
                     Last Entry Date
                   </p>
                   <p className="text-sm" style={{ color: 'var(--gray-900)' }}>
-                    {new Date(patient.lastEntryDate).toLocaleDateString('en-US', {
-                      month: 'long',
-                      day: 'numeric',
-                      year: 'numeric'
-                    })}
+                    {patient.last_entry_date
+                      ? new Date(patient.last_entry_date).toLocaleDateString('en-US', {
+                          month: 'long', day: 'numeric', year: 'numeric'
+                        })
+                      : 'No entries yet'}
                   </p>
                 </div>
               </CardContent>
@@ -820,7 +928,7 @@ export default function PatientDetail() {
                   <p className="text-xs font-medium mb-2" style={{ color: 'var(--gray-700)' }}>
                     Latest Status
                   </p>
-                  {patient.latestStatus === 'not_depressed' ? (
+                  {patient.latest_status === 'not_depressed' ? (
                     <Badge 
                       variant="outline"
                       className="border-[var(--green-700)] text-[var(--green-700)] bg-green-50"
@@ -843,9 +951,9 @@ export default function PatientDetail() {
                   <div className="flex items-center gap-2">
                     <span 
                       className="text-2xl font-semibold"
-                      style={{ color: getRiskColor(patient.riskScore) }}
+                      style={{ color: getRiskColor(patient.risk_score ?? 0) }}
                     >
-                      {patient.riskScore}
+                      {patient.risk_score ?? '—'}
                     </span>
                     <span className="text-sm" style={{ color: 'var(--gray-700)' }}>/100</span>
                   </div>

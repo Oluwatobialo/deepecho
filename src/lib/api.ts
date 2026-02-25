@@ -129,6 +129,23 @@ export async function getMe(): Promise<UserResponse | null> {
   return res.json();
 }
 
+export interface ModelMetricsResponse {
+  model_name: string;
+  accuracy: number;
+  precision: number;
+  recall: number;
+  f1_score: number;
+  auc_roc: number;
+  dataset: string;
+  last_evaluated: string;
+}
+
+export async function getMetrics(): Promise<ModelMetricsResponse> {
+  const res = await fetchWithAuth(`${API_BASE}/api/metrics`);
+  if (!res.ok) throw new Error("Failed to fetch metrics");
+  return res.json();
+}
+
 // --- Patients (API types match backend schemas) ---
 export interface PatientResponse {
   id: number;
@@ -141,6 +158,7 @@ export interface PatientResponse {
   risk_score: number | null;
   confidence: number | null;
   total_entries: number;
+  flagged_for_followup: boolean;
 }
 
 export async function fetchPatients(): Promise<PatientResponse[]> {
@@ -186,6 +204,16 @@ export async function fetchPatient(patientId: number): Promise<PatientResponse> 
     if (res.status === 404) throw new Error("Patient not found");
     throw new Error("Failed to load patient");
   }
+  return res.json();
+}
+
+export async function flagPatientForFollowup(patientId: number, flagged: boolean): Promise<PatientResponse> {
+  const res = await fetchWithAuth(`${API_BASE}/api/patients/${patientId}/flag`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ flagged }),
+  });
+  if (!res.ok) throw new Error("Failed to update flag");
   return res.json();
 }
 

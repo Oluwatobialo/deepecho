@@ -7,6 +7,7 @@ import json
 import logging
 import urllib.request
 import urllib.error
+from datetime import timedelta
 from config import SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_JWT_SECRET
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,7 @@ def verify_jwt(token: str) -> dict:
                 signing_key.key,
                 algorithms=["ES256"],
                 audience="authenticated",
+                leeway=timedelta(seconds=60),
             )
         except jwt.InvalidAudienceError:
             return jwt.decode(
@@ -130,6 +132,7 @@ def verify_jwt(token: str) -> dict:
                 signing_key.key,
                 algorithms=["ES256"],
                 options={"verify_aud": False},
+                leeway=timedelta(seconds=60),
             )
     elif alg == "HS256":
         if not SUPABASE_JWT_SECRET:
@@ -140,6 +143,7 @@ def verify_jwt(token: str) -> dict:
                 SUPABASE_JWT_SECRET,
                 audience="authenticated",
                 algorithms=["HS256"],
+                leeway=timedelta(seconds=60),
             )
         except jwt.InvalidAudienceError:
             return jwt.decode(
@@ -147,6 +151,7 @@ def verify_jwt(token: str) -> dict:
                 SUPABASE_JWT_SECRET,
                 algorithms=["HS256"],
                 options={"verify_aud": False},
+                leeway=timedelta(seconds=60),
             )
     else:
         raise jwt.InvalidAlgorithmError(f"Algorithm {alg} is not allowed")

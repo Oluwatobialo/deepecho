@@ -50,9 +50,14 @@ class PatientResponse(BaseModel):
     risk_score: int | None = None
     confidence: float | None = None
     total_entries: int = 0
+    flagged_for_followup: bool = False
 
     class Config:
         from_attributes = True
+
+
+class PatientFlagUpdate(BaseModel):
+    flagged: bool
 
 
 # Journal entries

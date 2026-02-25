@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from database import get_db
 from models_db import User, Patient, JournalEntry
-from schemas import PatientCreate, PatientResponse, JournalEntryCreate, JournalEntryResponse
+from schemas import PatientCreate, PatientResponse, PatientFlagUpdate, JournalEntryCreate, JournalEntryResponse
 from auth_supabase import get_current_user
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
@@ -39,6 +39,7 @@ def _patient_response(p: Patient, last_entry: JournalEntry | None = None, total_
         risk_score=last_entry.risk_score if last_entry else None,
         confidence=last_entry.confidence if last_entry else None,
         total_entries=total_entries,
+        flagged_for_followup=p.flagged_for_followup,
     )
 
 
@@ -105,6 +106,24 @@ def create_patient(
     db.commit()
     db.refresh(patient)
     return _patient_response(patient)
+
+
+@router.patch("/{patient_id}/flag", response_model=PatientResponse)
+def flag_patient(
+    patient_id: int,
+    data: PatientFlagUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    patient = db.query(Patient).filter(Patient.id == patient_id, Patient.user_id == current_user.id).first()
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+    patient.flagged_for_followup = data.flagged
+    db.commit()
+    db.refresh(patient)
+    count = db.query(JournalEntry).filter(JournalEntry.patient_id == patient.id).count()
+    last = db.query(JournalEntry).filter(JournalEntry.patient_id == patient.id).order_by(desc(JournalEntry.created_at)).first()
+    return _patient_response(patient, last, count)
 
 
 @router.get("/{patient_id}", response_model=PatientResponse)

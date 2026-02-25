@@ -1,6 +1,6 @@
 """SQLAlchemy models for User, Patient, JournalEntry."""
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text, Boolean
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -27,6 +27,7 @@ class Patient(Base):
     date_of_birth = Column(String(50), nullable=True)
     initial_concern = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    flagged_for_followup = Column(Boolean, default=False, nullable=False)
 
     user = relationship("User", back_populates="patients")
     entries = relationship("JournalEntry", back_populates="patient", cascade="all, delete-orphan")

@@ -1,0 +1,6 @@
+@echo off
+echo Starting DeepEcho Platform...
+start "DeepEcho Backend" cmd /k "cd backend && call .venv\Scripts\activate && py -m uvicorn main:app --host 127.0.0.1 --port 8002 --reload"
+timeout /t 3
+start "DeepEcho Frontend" cmd /k "npm run dev"
+echo Both servers starting...

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import TopNav from '../components/TopNav';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -22,11 +22,11 @@ import {
   type AnalyzeResponse,
   type PatientResponse,
 } from '../lib/api';
-import { Users, AlertTriangle, FileText, Search, Filter, Plus, Eye, UserPlus, Calendar } from 'lucide-react';
+import { Users, AlertTriangle, FileText, Search, Filter, Plus, Eye, UserPlus, Calendar, Flag } from 'lucide-react';
 import { toast } from 'sonner';
 
 type TabValue = 'all' | 'high-risk' | 'recent';
-type FilterValue = 'all' | 'high-risk' | 'low-risk' | 'newest';
+type FilterValue = 'all' | 'high-risk' | 'low-risk' | 'newest' | 'flagged';
 type AnalysisStep = 'preprocessing' | 'mentalbert' | 'complete' | null;
 
 export default function Dashboard() {
@@ -55,8 +55,20 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    const cached = sessionStorage.getItem('patients_cache');
+    if (cached) {
+      try {
+        const data = JSON.parse(cached) as PatientResponse[];
+        setPatients(data);
+      } catch {
+        // ignore invalid cache
+      }
+    }
     fetchPatients()
-      .then(setPatients)
+      .then((data) => {
+        setPatients(data);
+        sessionStorage.setItem('patients_cache', JSON.stringify(data));
+      })
       .catch(() => toast.error('Failed to load patients'))
       .finally(() => setPatientsLoading(false));
   }, []);
@@ -181,7 +193,7 @@ export default function Dashboard() {
     return `${day}/${month}/${year}`;
   };
 
-  type DisplayPatient = { id: string; name: string; lastEntryDate: string; latestStatus: 'depressed' | 'not_depressed'; riskScore: number; confidence: number; totalEntries: number };
+  type DisplayPatient = { id: string; name: string; lastEntryDate: string; latestStatus: 'depressed' | 'not_depressed'; riskScore: number; confidence: number; totalEntries: number; flaggedForFollowup: boolean };
   const toDisplay = (p: PatientResponse): DisplayPatient => ({
     id: String(p.id),
     name: p.name,
@@ -190,6 +202,7 @@ export default function Dashboard() {
     riskScore: p.risk_score ?? 0,
     confidence: p.confidence ?? 0,
     totalEntries: p.total_entries,
+    flaggedForFollowup: p.flagged_for_followup ?? false,
   });
   const filteredPatients: DisplayPatient[] = patients
     .map(toDisplay)
@@ -202,6 +215,7 @@ export default function Dashboard() {
       if (searchQuery && !patient.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       if (filterValue === 'high-risk' && patient.riskScore < 70) return false;
       if (filterValue === 'low-risk' && patient.riskScore >= 40) return false;
+      if (filterValue === 'flagged' && !patient.flaggedForFollowup) return false;
       return true;
     })
     .sort((a, b) => {
@@ -316,52 +330,71 @@ export default function Dashboard() {
 
         {/* Stats Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card style={{ borderColor: 'var(--gray-200)' }}>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium" style={{ color: 'var(--gray-700)' }}>
-                Total Patients
-              </CardTitle>
-              <Users className="w-5 h-5" style={{ color: 'var(--brand-600)' }} />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-semibold">{totalPatients}</div>
-              <p className="text-xs mt-1" style={{ color: 'var(--gray-700)' }}>
-                Active in monitoring
-              </p>
-            </CardContent>
-          </Card>
+          {patientsLoading && patients.length === 0 ? (
+            <>
+              {[1, 2, 3].map((i) => (
+                <Card key={i} style={{ borderColor: 'var(--gray-200)' }}>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <div className="h-4 w-24 rounded bg-gray-200 animate-pulse" />
+                    <div className="h-5 w-5 rounded bg-gray-200 animate-pulse" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-9 w-16 rounded bg-gray-200 animate-pulse" />
+                    <div className="h-3 w-28 rounded bg-gray-200 animate-pulse mt-2" />
+                  </CardContent>
+                </Card>
+              ))}
+            </>
+          ) : (
+            <>
+              <Card style={{ borderColor: 'var(--gray-200)' }}>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium" style={{ color: 'var(--gray-700)' }}>
+                    Total Patients
+                  </CardTitle>
+                  <Users className="w-5 h-5" style={{ color: 'var(--brand-600)' }} />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-semibold">{totalPatients}</div>
+                  <p className="text-xs mt-1" style={{ color: 'var(--gray-700)' }}>
+                    Active in monitoring
+                  </p>
+                </CardContent>
+              </Card>
 
-          <Card style={{ borderColor: 'var(--gray-200)' }}>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium" style={{ color: 'var(--gray-700)' }}>
-                High-Risk Alerts
-              </CardTitle>
-              <AlertTriangle className="w-5 h-5" style={{ color: 'var(--red-700)' }} />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-semibold" style={{ color: 'var(--red-700)' }}>
-                {highRiskCount}
-              </div>
-              <p className="text-xs mt-1" style={{ color: 'var(--gray-700)' }}>
-                Require immediate attention
-              </p>
-            </CardContent>
-          </Card>
+              <Card style={{ borderColor: 'var(--gray-200)' }}>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium" style={{ color: 'var(--gray-700)' }}>
+                    High-Risk Alerts
+                  </CardTitle>
+                  <AlertTriangle className="w-5 h-5" style={{ color: 'var(--red-700)' }} />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-semibold" style={{ color: 'var(--red-700)' }}>
+                    {highRiskCount}
+                  </div>
+                  <p className="text-xs mt-1" style={{ color: 'var(--gray-700)' }}>
+                    Require immediate attention
+                  </p>
+                </CardContent>
+              </Card>
 
-          <Card style={{ borderColor: 'var(--gray-200)' }}>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium" style={{ color: 'var(--gray-700)' }}>
-                Recent Entries Today
-              </CardTitle>
-              <FileText className="w-5 h-5" style={{ color: 'var(--blue-500)' }} />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-semibold">{todayEntries}</div>
-              <p className="text-xs mt-1" style={{ color: 'var(--gray-700)' }}>
-                New journal entries
-              </p>
-            </CardContent>
-          </Card>
+              <Card style={{ borderColor: 'var(--gray-200)' }}>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium" style={{ color: 'var(--gray-700)' }}>
+                    Recent Entries Today
+                  </CardTitle>
+                  <FileText className="w-5 h-5" style={{ color: 'var(--blue-500)' }} />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-semibold">{todayEntries}</div>
+                  <p className="text-xs mt-1" style={{ color: 'var(--gray-700)' }}>
+                    New journal entries
+                  </p>
+                </CardContent>
+              </Card>
+            </>
+          )}
         </div>
 
         {/* Patient Directory */}
@@ -412,6 +445,7 @@ export default function Dashboard() {
                     <SelectItem value="high-risk">High-Risk Only</SelectItem>
                     <SelectItem value="low-risk">Low-Risk Only</SelectItem>
                     <SelectItem value="newest">Newest First</SelectItem>
+                    <SelectItem value="flagged">Flagged for Follow-up</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -431,7 +465,19 @@ export default function Dashboard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredPatients.length === 0 ? (
+                {patientsLoading && patients.length === 0 ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <TableRow key={i} style={{ borderColor: 'var(--gray-200)' }}>
+                      <TableCell><div className="h-8 w-32 rounded bg-gray-200 animate-pulse" /></TableCell>
+                      <TableCell><div className="h-6 w-20 rounded bg-gray-200 animate-pulse" /></TableCell>
+                      <TableCell><div className="h-6 w-16 rounded bg-gray-200 animate-pulse" /></TableCell>
+                      <TableCell><div className="h-6 w-12 rounded bg-gray-200 animate-pulse" /></TableCell>
+                      <TableCell><div className="h-6 w-8 rounded bg-gray-200 animate-pulse" /></TableCell>
+                      <TableCell><div className="h-6 w-20 rounded bg-gray-200 animate-pulse" /></TableCell>
+                      <TableCell><div className="h-8 w-24 rounded bg-gray-200 animate-pulse" /></TableCell>
+                    </TableRow>
+                  ))
+                ) : filteredPatients.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-8" style={{ color: 'var(--gray-700)' }}>
                       No patients found matching your criteria
@@ -455,6 +501,9 @@ export default function Dashboard() {
                               </AvatarFallback>
                             </Avatar>
                             <span className="font-medium">{patient.name}</span>
+                            {patient.flaggedForFollowup && (
+                              <Flag className="w-4 h-4 shrink-0" style={{ color: '#F59E0B' }} title="Flagged for follow-up" />
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="text-sm">
@@ -757,7 +806,6 @@ export default function Dashboard() {
               onClick={() => {
                 setIsAddPatientModalOpen(false);
                 setNewPatientName('');
-                setNewPatientId('');
                 setNewPatientDob('');
                 setNameError(false);
               }}
